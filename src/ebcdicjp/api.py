@@ -28,7 +28,7 @@ def layout_rows(root: Item) -> list[dict]:
 
 
 def read_records(data: bytes, root: Item, codepage: str = "ibm930", rdw: bool = False, lrecl: int | None = None,
-                 skip: int = 0, limit: int | None = None, keep_spaces: bool = False) -> dict:
+                 skip: int = 0, limit: int | None = None, keep_spaces: bool = False, use: list | None = None) -> dict:
     lrecl = lrecl or root.size
     out = []
     notes = []
@@ -42,7 +42,7 @@ def read_records(data: bytes, root: Item, codepage: str = "ibm930", rdw: bool = 
         total += 1
         if k < skip or (limit is not None and len(out) >= limit):
             continue
-        value, issues = decode_record(raw, root, codepage, keep_spaces)
+        value, issues = decode_record(raw, root, codepage, keep_spaces, use=use)
         out.append({"index": k + 1, "offset": off, "value": value, "issues": issues})
     return {"codepage": codepage, "record_length": lrecl, "records_in_file": total, "records": out, "notes": notes}
 

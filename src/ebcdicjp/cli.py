@@ -78,6 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--skip", type=int, default=0)
     p.add_argument("-n", "--limit", type=int)
     p.add_argument("--keep-spaces", action="store_true", help="末尾の空白を残す")
+    p.add_argument("--use", action="append", help="REDEFINES のうち、このレコードで使う読み方（例: --use ADDR-JP）。複数指定可")
 
     p = sub.add_parser("dump", help="項目ごとに 16進 と値を並べて表示（文字化けの調査用）")
     common(p)
@@ -120,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
         if a.cmd in ("view", "dump"):
             root = _layout(a)
             res = read_records(_read(a.data), root, a.codepage, a.rdw, a.lrecl, a.skip, a.limit,
-                               getattr(a, "keep_spaces", False))
+                               getattr(a, "keep_spaces", False), getattr(a, "use", None))
             for n in res["notes"]:
                 print(f"note: {n}", file=sys.stderr)
             if a.cmd == "dump":
@@ -154,10 +155,14 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 for rec in res["records"]:
                     print(f"## record {rec['index']}\n\n| field | value |\n|---|---|")
+                    alt = [i["path"].split(".", 1)[1] for i in rec["issues"] if i["kind"] == "alternative" and "." in i["path"]]
                     for k, v in _flat(rec["value"]):
+                        if any(k == p or k.startswith(p + ".") for p in alt):
+                            v = "（REDEFINES の別の読み方。このレコードでは使われていない）"
                         print(f"| {k} | {'' if v is None else v} |")
                     for i in rec["issues"]:
-                        print(_issue_line(i))
+                        if i["kind"] != "alternative":
+                            print(_issue_line(i))
                     print()
             bad = sum(1 for r in res["records"] for i in r["issues"] if i["kind"] not in ("blank", "alternative"))
             print(f"{len(res['records'])} of {res['records_in_file']} records, {bad} problem(s)", file=sys.stderr)

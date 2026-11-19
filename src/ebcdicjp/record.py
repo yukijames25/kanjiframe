@@ -56,10 +56,36 @@ def decode_field(raw: bytes, it: Item, codepage: str, keep_spaces: bool = False)
         return None, [{"kind": "bad-number", "detail": str(e)}]
 
 
+def redefines_choice(root: Item, use: list[str] | None) -> dict:
+    """Map REDEFINES family (base name) -> the one member to read, from names like ["ADDR-JP"]."""
+    if not use:
+        return {}
+    families: dict[str, set] = {}
+
+    def scan(it: Item):
+        for c in it.children:
+            if c.redefines:
+                families.setdefault(c.redefines.upper(), {c.redefines.upper()}).add(c.name.upper())
+            scan(c)
+    scan(root)
+    out = {}
+    for name in use:
+        hit = [base for base, members in families.items() if name.upper() in members]
+        if not hit:
+            raise RecordError(f"{name} is not part of any REDEFINES (have: "
+                              f"{sorted(m for ms in families.values() for m in ms)})")
+        out[hit[0]] = name.upper()
+    return out
+
+
 def decode_record(data: bytes, root: Item, codepage: str = "ibm930", keep_spaces: bool = False,
-                  include_filler: bool = False):
-    """Decode one record. Returns (value, issues) where issues carry path, offset and the raw bytes."""
+                  include_filler: bool = False, use: list[str] | None = None):
+    """Decode one record. Returns (value, issues) where issues carry path, offset and the raw bytes.
+
+    *use* names the REDEFINES readings that apply (e.g. ["ADDR-JP"]); the others are left out.
+    """
     issues: list[dict] = []
+    skip_redefines = redefines_choice(root, use)
     if len(data) < root.size:
         issues.append({"path": root.name, "offset": len(data), "kind": "short",
                        "detail": f"record is {len(data)} bytes; the layout needs {root.size}"})
@@ -74,28 +100,41 @@ def decode_record(data: bytes, root: Item, codepage: str = "ibm930", keep_spaces
                 for c in it.children:
                     if c.name.upper() == "FILLER" and not include_filler:
                         continue
+                    family_key = (c.redefines or c.name).upper()
+                    if skip_redefines and family_key in skip_redefines and c.name.upper() != skip_redefines[family_key]:
+                        continue  # the caller said which reading of these bytes is the right one
                     mark = len(issues)
-                    out[c.name] = walk(c, extra, f"{path}.{c.name}")
+                    member = f"{path}.{c.name}"
+                    out[c.name] = walk(c, extra, member)
                     mine = issues[mark:]
                     del issues[mark:]
-                    family.setdefault((c.redefines or c.name).upper(), []).append(mine)
+                    family.setdefault(family_key, []).append((member, mine))
                 for members in family.values():
-                    real = [[i for i in m if i["kind"] != "blank"] for m in members]
+                    real = [[i for i in m if i["kind"] != "blank"] for _, m in members]
                     clean = len(members) > 1 and any(not r for r in real)
-                    for m in members:
-                        for i in m:
-                            if clean and i["kind"] != "blank":
-                                i["detail"] = f"{i['kind']}: {i['detail']} (another REDEFINES reading of these bytes is clean)"
-                                i["kind"] = "alternative"
-                            issues.append(i)
+                    for (member, m), r in zip(members, real):
+                        if clean and r:
+                            # one line for the whole branch: these bytes are meant to be read the other way
+                            issues.append({"path": member, "offset": r[0]["offset"], "kind": "alternative",
+                                           "detail": f"{len(r)} problem(s) when these bytes are read as {member.rsplit('.', 1)[-1]} "
+                                                     f"({r[0]['kind']}: {r[0]['detail']}); another REDEFINES reading "
+                                                     f"is clean, so this one is probably not used here"})
+                            issues.extend(i for i in m if i["kind"] == "blank")
+                        else:
+                            issues.extend(m)
                 return out
             off = it.offset + extra
             raw = data[off:off + it.size]
             value, iss = decode_field(raw, it, codepage, keep_spaces)
+            by_kind: dict[str, list] = {}
             for i in iss:
-                at = off + i.pop("at", 0)
-                issues.append({"path": path + (f"({k + 1})" if it.occurs > 1 else ""), "offset": at,
-                               "bytes": raw.hex(" ").upper(), **i})
+                by_kind.setdefault(i["kind"], []).append(i)
+            for kind, group in by_kind.items():  # one line per field and kind, with a count
+                first = group[0]
+                detail = first["detail"] if len(group) == 1 else f"{len(group)} times, first: {first['detail']}"
+                issues.append({"path": path + (f"({k + 1})" if it.occurs > 1 else ""), "offset": off + first.get("at", 0),
+                               "bytes": raw.hex(" ").upper(), "kind": kind, "detail": detail,
+                               **({"count": len(group)} if len(group) > 1 else {})})
             return value
         if it.occurs > 1:
             return [one(k) for k in range(it.occurs)]
