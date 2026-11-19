@@ -29,7 +29,7 @@ def decode_field(raw: bytes, it: Item, codepage: str, keep_spaces: bool = False)
         if not keep_spaces:
             text = text.rstrip(" 　")
         return text, issues
-    if raw and (set(raw) == {0x40} or set(raw) == {0x00}):
+    if it.kind != "binary" and raw and (set(raw) == {0x40} or set(raw) == {0x00}):  # binary 0 is all 00
         what = "spaces" if raw[0] == 0x40 else "low-values (00)"
         return None, [{"kind": "blank", "detail": f"numeric field is all {what}"}]
     try:
