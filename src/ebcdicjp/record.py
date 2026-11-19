@@ -224,7 +224,10 @@ def encode_record(value: dict, root: Item, codepage: str = "ibm930") -> tuple[by
                 walk(names[k.upper()], x, extra, f"{path}.{names[k.upper()].name}")
             return
         off = it.offset + extra
-        buf[off:off + it.size] = _encode_leaf(it, v, codepage)
+        try:
+            buf[off:off + it.size] = _encode_leaf(it, v, codepage)
+        except RecordError as e:
+            raise RecordError(f"{path} (pos {off + 1}, {it.pic}): {e}") from None
         if it.kind in ("text", "dbcs"):
             _, iss = encode_report(str(v), codepage, dbcs_only=(it.kind == "dbcs"))
             notes.extend({"path": path, "kind": i.kind, "detail": i.detail} for i in iss if i.kind == "one-way")

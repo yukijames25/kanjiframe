@@ -19,6 +19,7 @@ import io
 import json
 import os
 import sys
+import unicodedata
 
 from . import __version__
 from .api import (detect_codepage, layout_rows, load_layout, read_copybook, read_records, text_preview,
@@ -60,6 +61,40 @@ def _flat(value, prefix=""):
 
 def _issue_line(i: dict) -> str:
     return f"  ! {i['path']}  pos {i['pos']}  {i['kind']}: {i['detail']}"
+
+
+def _n(count: int, word: str) -> str:
+    return f"{count} {word}{'' if count == 1 else 's'}"
+
+
+def _width(text: str) -> int:
+    return sum(2 if unicodedata.east_asian_width(ch) in "WF" else 1 for ch in text)
+
+
+def _pad(text: str, width: int) -> str:
+    return text + " " * max(0, width - _width(text))
+
+
+def _summary(res: dict, issues: list[dict], shown: int | None = None) -> tuple[str, int]:
+    """One closing line; problems and blank numeric fields are counted apart, so the numbers add up."""
+    problems = [i for i in issues if i["kind"] not in NOT_PROBLEMS]
+    blanks = [i for i in issues if i["kind"] == "blank"]
+    by_kind: dict[str, int] = {}
+    for i in problems:
+        by_kind[i["kind"]] = by_kind.get(i["kind"], 0) + 1
+    recs = len({i["record"] for i in problems})
+    head = (f"{shown} of {_n(res['records_in_file'], 'record')}" if shown is not None
+            else _n(res["records_in_file"], "record"))
+    line = (f"{head} ({res['codepage'].upper()}{', RDW' if res['rdw'] else ''}): "
+            f"{_n(len(problems), 'problem')}" + (f" in {_n(recs, 'record')} — " +
+                                                 ", ".join(f"{k} {n}" for k, n in sorted(by_kind.items()))
+                                                 if problems else ""))
+    if blanks:
+        line += (f". Also {_n(len(blanks), 'blank numeric field')} (all spaces or zeros), not counted as problems: "
+                 "often intended, but confirm with the data owner")
+    if res.get("codepage_uncertain"):
+        line += ". CODE PAGE UNCERTAIN: see the note above before trusting kana or lowercase"
+    return line, (1 if problems or res.get("codepage_uncertain") else 0)
 
 
 def _key_value(flat: dict, key: str):
@@ -170,18 +205,23 @@ def main(argv: list[str] | None = None) -> int:
                 _note(n)
             if a.cmd == "dump":
                 for rec in res["records"]:
-                    print(f"# record {rec['index']} (starts at byte {rec['offset'] + 1} of the file)")
+                    rdw_note = ""
+                    if res["rdw"]:
+                        h = data[rec["offset"] - 4:rec["offset"]]
+                        rdw_note = f", after its RDW {h.hex(' ').upper()} = {int.from_bytes(h[:2], 'big')} bytes incl. the RDW"
+                    print(f"# record {rec['index']} (starts at byte {rec['offset'] + 1} of the file{rdw_note})")
                     raw = data[rec["offset"]:rec["offset"] + root.size]
                     flat = dict(_flat(rec["value"]))
                     by_path: dict[str, list] = {}
                     for i in rec["issues"]:
                         by_path.setdefault(i["path"], []).append(i)
-                    print(f"{'pos':>6} {'field':<40} {'value':<24} hex")
+                    print(f"{'pos':>6} {'field':<40} {_pad('value', 24)} hex")
                     for path, off, it in fields(root):
                         key = path.split(".", 1)[1] if "." in path else path
                         b = raw[off:off + it.size].hex(" ").upper()
                         mark = "".join(f"   ! pos {i['pos']} {i['kind']}: {i['detail']}" for i in by_path.get(path, []))
-                        print(f"{off + 1:>6} {path:<40} {'' if flat.get(key) is None else flat.get(key)!s:<24} {b}{mark}")
+                        v = flat.get(key)
+                        print(f"{off + 1:>6} {path:<40} {_pad('' if v is None else str(v), 24)} {b}{mark}")
                 return 0
             if a.cmd == "check":
                 return _check(a, res)
@@ -213,10 +253,10 @@ def main(argv: list[str] | None = None) -> int:
                             print(_issue_line(i))
                     print()
             sys.stdout.flush()
-            bad = sum(1 for r in res["records"] for i in r["issues"] if i["kind"] not in NOT_PROBLEMS)
-            print(f"{len(res['records'])} of {res['records_in_file']} records ({res['codepage'].upper()}"
-                  f"{', RDW' if res['rdw'] else ''}), {bad} problem(s)", file=sys.stderr)
-            return 1 if bad else 0
+            line, code = _summary(res, [dict(i, record=r["index"]) for r in res["records"] for i in r["issues"]],
+                                  len(res["records"]))
+            print(line, file=sys.stderr)
+            return code
 
         if a.cmd == "encode":
             if canonical(a.codepage) is None:
@@ -305,18 +345,9 @@ def _check(a, res) -> int:
             print(f"record {r['record']}{'  ' + key if key else ''}  {r['field']}  pos {r['pos']}"
                   f"{'  [' + r['bytes'] + ']' if r['bytes'] else ''}  {r['kind']}: {r['detail']}")
     sys.stdout.flush()
-    problems = [r for r in rows if r["kind"] not in NOT_PROBLEMS]
-    by_kind: dict[str, int] = {}
-    for r in rows:
-        by_kind[r["kind"]] = by_kind.get(r["kind"], 0) + 1
-    recs = len({r["record"] for r in problems})
-    kinds = ", ".join(f"{k} {n}" for k, n in sorted(by_kind.items()))
-    print(f"{res['records_in_file']} records ({res['codepage'].upper()}{', RDW' if res['rdw'] else ''}): "
-          f"{len(problems)} problem(s) in {recs} record(s)"
-          f"{' — ' + kinds if kinds else ''}"
-          f"{'  (blank = empty numeric field: often intended, but check)' if 'blank' in by_kind else ''}",
-          file=sys.stderr)
-    return 1 if problems else 0
+    line, code = _summary(res, rows)
+    print(line, file=sys.stderr)
+    return code
 
 
 if __name__ == "__main__":

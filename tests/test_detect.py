@@ -99,8 +99,43 @@ class DetectTests(unittest.TestCase):
         self.assertIn("ITEMS(1).ITEM-NAME  pos 37", lines[0])
         self.assertIn("EMP-ID=E0000003", lines[1])
         self.assertIn("gaiji", lines[1])
-        self.assertIn("2 problem(s) in 2 record(s)", err.getvalue())
+        self.assertIn("2 problems in 2 records", err.getvalue())
         self.assertIn("Shift_JIS", err.getvalue())
+
+
+KANA_CPY = """       01  R.
+           05  ID        PIC X(8).
+           05  KANJI     PIC N(5).
+           05  KANA      PIC X(20).
+           05  AMT       PIC S9(7) COMP-3.
+"""
+NAMES = [("山田太郎", "ﾔﾏﾀﾞ ﾀﾛｳ"), ("渡邊花子", "ﾜﾀﾅﾍﾞ ﾊﾅｺ"), ("佐藤美紀", "ｻﾄｳ ﾐｷ"), ("中村健", "ﾅｶﾑﾗ ｹﾝ")]
+
+
+class NoLowercaseTests(unittest.TestCase):
+    """Stand-in test 2: IBM939 data without lowercase letters was read as IBM930 with garbled kana and no warning."""
+
+    def test_kana_only_data_is_detected_both_ways(self):
+        root = load_layout(KANA_CPY)
+        recs = [{"ID": f"E{k:07}", "KANJI": a, "KANA": b, "AMT": "1"} for k, (a, b) in enumerate(NAMES)]
+        for cp in ("ibm930", "ibm939"):
+            res = read_records(write_records(recs, root, cp)[0], root)
+            self.assertEqual(res["codepage"], cp)
+            self.assertFalse(res["codepage_uncertain"])
+            self.assertEqual(res["records"][0]["value"]["KANA"], "ﾔﾏﾀﾞ ﾀﾛｳ")
+
+    def test_too_little_to_tell_is_flagged_not_silent(self):
+        root = load_layout(KANA_CPY)
+        data = write_records([{"ID": "E0000001", "KANJI": "佐藤", "KANA": "ｻﾄｳ ﾐｷ"}], root, "ibm939")[0]
+        res = read_records(data, root)
+        self.assertTrue(res["codepage_uncertain"])
+        self.assertTrue(any("UNCERTAIN" in n for n in res["notes"]))
+
+    def test_same_reading_is_not_a_worry(self):
+        root = load_layout(KANA_CPY)
+        data = write_records([{"ID": "E0000001", "KANJI": "佐藤", "KANA": "ABC 123"}], root, "ibm939")[0]
+        res = read_records(data, root)
+        self.assertFalse(res["codepage_uncertain"])
 
 
 if __name__ == "__main__":

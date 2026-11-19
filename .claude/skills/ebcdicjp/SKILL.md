@@ -20,14 +20,14 @@ description: Read, check or create Japanese mainframe data — EBCDIC (IBM930/IB
    python -m ebcdicjp view <data> -c <copybook.cpy> -n 5 --format md
    ```
    - コードページ・RDW・コピーブックの文字コードは自動で判定され、`note:` に何を仮定したかが出る。**note は必ず読んでユーザーにも伝える**。違っていれば `--codepage ibm939` / `--no-rdw` / `--copybook-encoding` で上書きする。
-   - `could not tell IBM930 from IBM939` のときは推測で決めず、`detect` の両方の preview をユーザーに見せて確認する。
+   - `code page UNCERTAIN` のときは推測で決めず、`detect` の両方の preview（文字項目ごとの読み）をユーザーに見せて確認する。
    - `not a multiple of the record length ... not an RDW chain either` は、レイアウト違い・`--lrecl`・転送時の改行混入を疑う。
 
 3. **全件の問題を一覧する**
    ```
    python -m ebcdicjp check <data> -c <copybook.cpy> --key <社員番号などの項目名>
    ```
-   1行に1問題（レコード番号・キー・項目のパス・位置（1始まり）・バイト・種類）。最後の行が件数のまとめ。`--format csv` で表にもできる。
+   1行に1問題（レコード番号・キー・項目のパス・位置（1始まり）・バイト・種類）。最後の行が件数のまとめ（blank は問題とは別に数える。blank もユーザーに確認する）。終了コード 1 は「問題あり」で、コマンドの失敗ではない（失敗は 2）。`--format csv` で表にもできる。
 
 4. **1件を詳しく調べる**
    ```
