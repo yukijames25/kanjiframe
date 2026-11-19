@@ -86,10 +86,15 @@ def decode_record(data: bytes, root: Item, codepage: str = "ibm930", keep_spaces
     """
     issues: list[dict] = []
     skip_redefines = redefines_choice(root, use)
-    if len(data) < root.size:
-        issues.append({"path": root.name, "offset": len(data), "pos": len(data) + 1, "kind": "short",
-                       "detail": f"record is {len(data)} bytes; the layout needs {root.size}"})
-        data = data + b"\x40" * (root.size - len(data))
+    have = len(data)
+    if have < root.size:
+        cut = [p.rsplit(".", 1)[-1] + (" (partly)" if off < have else "")
+               for p, off, it in fields(root) if off + it.size > have]
+        names = ", ".join(cut[:4]) + (f" and {len(cut) - 4} more" if len(cut) > 4 else "")
+        issues.append({"path": root.name, "offset": have, "pos": have + 1, "kind": "short",
+                       "detail": f"record is {have} bytes; the layout needs {root.size}. Missing from pos {have + 1}: "
+                                 f"{names} (cut off in transfer, or the wrong layout?)"})
+        data = data + b"\x40" * (root.size - have)
 
     def walk(it: Item, shift: int, path: str):
         def one(k):
@@ -125,6 +130,8 @@ def decode_record(data: bytes, root: Item, codepage: str = "ibm930", keep_spaces
                             issues.extend(m)
                 return out
             off = it.offset + extra
+            if off >= have:
+                return None  # not in the file at all: the "short" issue already says so
             raw = data[off:off + it.size]
             value, iss = decode_field(raw, it, codepage, keep_spaces, None if keep_gaiji else GETA)
             by_kind: dict[str, list] = {}
