@@ -1,3 +1,5 @@
+![ebcdicjp — メインフレームの日本語を、手元とAIで読み書きする。](assets/hero.png)
+
 # ebcdicjp
 
 **メインフレームの日本語データ（EBCDIC のカナ・漢字、COBOL のレコード）を、開発PCや AI エージェントから読み書きするツール。**

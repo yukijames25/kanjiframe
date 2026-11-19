@@ -6,6 +6,8 @@ topics: ["python", "cobol", "mainframe", "mcp", "claudecode"]
 published: false
 ---
 
+![ebcdicjp — メインフレームの日本語を、手元とAIで読み書きする。](https://raw.githubusercontent.com/yukijames25/ebcdicjp/main/assets/hero.png)
+
 メインフレームの移行や保守の現場では、本番から抜いた固定長のデータを、コピーブック（COBOL のレコード定義）と一緒に受け取って、開発PCで中身を確かめる場面がよくあります。
 
 ところが、日本語のデータになると急に手が止まります。カナや漢字が入った EBCDIC を読む手段が、手元に無いことが多いからです。そこで、**メインフレームの日本語データを、開発PCや AI エージェントから読み書きするツール** ebcdicjp を作りました。
