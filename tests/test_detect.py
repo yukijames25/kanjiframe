@@ -138,5 +138,68 @@ class NoLowercaseTests(unittest.TestCase):
         self.assertFalse(res["codepage_uncertain"])
 
 
+MIXED_CPY = """       01  TOR-REC.
+           05  TOR-CD            PIC X(6).
+           05  TOR-KBN           PIC X(1).
+           05  HOJIN-DETAIL.
+               10  HOJIN-NO      PIC 9(13).
+           05  KOJIN-DETAIL REDEFINES HOJIN-DETAIL.
+               10  BIRTH-DATE    PIC 9(8).
+               10  FILLER        PIC X(5).
+           05  BALANCE           PIC S9(5)V99 COMP-3.
+"""
+
+
+class RecordTypeTests(unittest.TestCase):
+    """Stand-in test 3: a file mixing record types needs a REDEFINES reading per record."""
+
+    def setUp(self):
+        self.root = load_layout(MIXED_CPY)
+        recs = [{"TOR-CD": "T1", "TOR-KBN": "1", "HOJIN-DETAIL": {"HOJIN-NO": "1234567890123"}, "BALANCE": "1.50"},
+                {"TOR-CD": "T2", "TOR-KBN": "2", "KOJIN-DETAIL": {"BIRTH-DATE": "19750315"}, "BALANCE": "2.00"},
+                {"TOR-CD": "T3", "TOR-KBN": "3", "BALANCE": "3.00"}]
+        data = bytearray(write_records(recs, self.root, "ibm930")[0])
+        data[self.root.size + 20 + 1] = 0xF5  # T2 BALANCE: a nibble F among the digits
+        self.data = bytes(data)
+
+    def test_use_by_record_type(self):
+        use = ["HOJIN-DETAIL:TOR-KBN=1", "KOJIN-DETAIL:TOR-KBN=2"]
+        recs = read_records(self.data, self.root, "ibm930", use=use)["records"]
+        self.assertEqual(recs[0]["value"]["HOJIN-DETAIL"], {"HOJIN-NO": 1234567890123})
+        self.assertNotIn("KOJIN-DETAIL", recs[0]["value"])
+        self.assertEqual(recs[1]["value"]["KOJIN-DETAIL"], {"BIRTH-DATE": 19750315})
+        self.assertNotIn("HOJIN-DETAIL", recs[1]["value"])
+        self.assertEqual(recs[2]["issues"][0]["kind"], "no-rule")  # TOR-KBN=3 has no rule: say so, show both
+        with self.assertRaises(ValueError):
+            read_records(self.data, self.root, "ibm930", use=["HOJIN-DETAIL:NO-SUCH=1"])
+
+    def _cli(self, *args):
+        with tempfile.TemporaryDirectory() as tmp:
+            dat, cpy = os.path.join(tmp, "T.dat"), os.path.join(tmp, "T.cpy")
+            with open(dat, "wb") as fh:
+                fh.write(self.data)
+            with open(cpy, "w", encoding="utf-8") as fh:
+                fh.write(MIXED_CPY)
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = main([args[0], dat, "-c", cpy, "--codepage", "ibm930", *args[1:]])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_csv_shows_unreadable_values_and_per_record_columns(self):
+        code, out, _ = self._cli("view", "--format", "csv", "--use", "HOJIN-DETAIL:TOR-KBN=1",
+                                 "--use", "KOJIN-DETAIL:TOR-KBN=2,3")
+        self.assertEqual(code, 1)
+        head, r1, r2, r3 = out.splitlines()
+        self.assertEqual(head.split(",")[:5], ["index", "TOR-CD", "TOR-KBN", "HOJIN-DETAIL.HOJIN-NO",
+                                               "KOJIN-DETAIL.BIRTH-DATE"])
+        self.assertIn("#ERR", r2)  # a broken number is not an empty cell
+        self.assertIn(",19750315,", r2)
+
+    def test_dump_exit_code_matches_view(self):
+        code, out, err = self._cli("dump", "--skip", "1")
+        self.assertEqual(code, 1)
+        self.assertIn("1 problem", err)
+
+
 if __name__ == "__main__":
     unittest.main()

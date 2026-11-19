@@ -134,6 +134,8 @@ def decode_record(data: bytes, root: Item, codepage: str = "ibm930", keep_spaces
                 return None  # not in the file at all: the "short" issue already says so
             raw = data[off:off + it.size]
             value, iss = decode_field(raw, it, codepage, keep_spaces, None if keep_gaiji else GETA)
+            if off + it.size > have:
+                iss = []  # only partly in the file: the "short" issue covers it
             by_kind: dict[str, list] = {}
             for i in iss:
                 by_kind.setdefault(i["kind"], []).append(i)

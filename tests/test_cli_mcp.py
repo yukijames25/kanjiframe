@@ -45,7 +45,7 @@ class CliTests(unittest.TestCase):
         with open(self.dat, "ab") as fh:
             fh.write(b"\x40\x40\x40")  # trailing garbage: size is no longer a multiple of LRECL
         code, out, err = run("view", self.dat, "-c", CPY)
-        self.assertIn("not a multiple", err)
+        self.assertIn("the last record is cut off", err)
         self.assertEqual(code, 1)  # the short last record is a problem
 
     def test_text(self):

@@ -46,7 +46,8 @@ TOOLS = [
             "lrecl": {"type": "integer"}, "skip": {"type": "integer", "default": 0},
             "limit": {"type": "integer", "default": 20}, "copybook_encoding": _CBE,
             "use": {"type": "array", "items": {"type": "string"},
-                    "description": "REDEFINES readings that apply to this file, e.g. [\"ADDR-JP\"]; the others are omitted"}},
+                    "description": "REDEFINES readings to use: [\"ADDR-JP\"] for every record, or by record type: "
+                                   "[\"HOJIN-DETAIL:TOR-KBN=1\", \"KOJIN-DETAIL:TOR-KBN=2\"]; the other readings are omitted"}},
             "required": ["path", "copybook"]},
     },
     {

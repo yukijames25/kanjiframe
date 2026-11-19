@@ -85,7 +85,9 @@ def _summary(res: dict, issues: list[dict], shown: int | None = None) -> tuple[s
     recs = len({i["record"] for i in problems})
     head = (f"{shown} of {_n(res['records_in_file'], 'record')}" if shown is not None
             else _n(res["records_in_file"], "record"))
-    line = (f"{head} ({res['codepage'].upper()}{', RDW' if res['rdw'] else ''}): "
+
+    cut = f"; {res['short_records']} cut short" if res.get("short_records") else ""
+    line = (f"{head} ({res['codepage'].upper()}{', RDW' if res['rdw'] else ''}{cut}): "
             f"{_n(len(problems), 'problem')}" + (f" in {_n(recs, 'record')} — " +
                                                  ", ".join(f"{k} {n}" for k, n in sorted(by_kind.items()))
                                                  if problems else ""))
@@ -95,6 +97,30 @@ def _summary(res: dict, issues: list[dict], shown: int | None = None) -> tuple[s
     if res.get("codepage_uncertain"):
         line += ". CODE PAGE UNCERTAIN: see the note above before trusting kana or lowercase"
     return line, (1 if problems or res.get("codepage_uncertain") else 0)
+
+
+def _unreadable(rec: dict) -> set:
+    """Field keys (as _flat names them) whose value could not be read, so tables show #ERR, not an empty cell."""
+    out = set()
+    for i in rec["issues"]:
+        if i["kind"] not in NOT_PROBLEMS + ("no-rule", "short") and "." in i["path"]:
+            out.add(i["path"].split(".", 1)[1])
+    return out
+
+
+def _cell(k: str, v, bad: set) -> str:
+    if v is None and k in bad:
+        return "#ERR"
+    return "" if v is None else str(v)
+
+
+def _layout_order(root, cols: dict) -> list:
+    """Columns in copybook order, so a REDEFINES reading sits where its bytes are."""
+    order = {}
+    for path, off, _it in fields(root):
+        key = path.split(".", 1)[1] if "." in path else path
+        order.setdefault(key.split("(")[0], off)
+    return sorted(cols, key=lambda k: (order.get(k.split("(")[0], 10 ** 9), list(cols).index(k)))
 
 
 def _key_value(flat: dict, key: str):
@@ -111,7 +137,8 @@ def main(argv: list[str] | None = None) -> int:
     for s in (sys.stdout, sys.stderr):
         if hasattr(s, "reconfigure"):
             s.reconfigure(encoding="utf-8")
-    ap = argparse.ArgumentParser(prog="ebcdicjp", description="日本語EBCDIC（IBM930/939）のメインフレームデータを読み書きする")
+    ap = argparse.ArgumentParser(prog="ebcdicjp", description="日本語EBCDIC（IBM930/939）のメインフレームデータを読み書きする",
+                                 epilog=__doc__.split("\n\n", 1)[1], formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--version", action="version", version=f"ebcdicjp {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -130,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
         if data:
             p.add_argument("data", help="データファイル（固定長、または RDW 付き可変長）")
         copybook_opts(p)
-        p.add_argument("--codepage", default="auto", help="auto（既定）/ ibm930（カナ）/ ibm939（英小文字）")
+        p.add_argument("--codepage", default="auto", help="auto（既定）/ ibm930（英小文字なし）/ ibm939（英小文字あり）。どちらも半角カナ・漢字を扱える")
         framing(p)
 
     def paging(p, n=None):
@@ -148,13 +175,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--format", choices=["jsonl", "csv", "md"], default="jsonl")
     paging(p)
     p.add_argument("--keep-spaces", action="store_true", help="末尾の空白を残す")
-    p.add_argument("--use", action="append", help="REDEFINES のうち、このレコードで使う読み方（例: --use ADDR-JP）。複数指定可")
+    p.add_argument("--use", action="append",
+                   help="REDEFINES のどの読み方を使うか。全件: --use ADDR-JP。レコード区分で: "
+                        "--use HOJIN-DETAIL:TOR-KBN=1 --use KOJIN-DETAIL:TOR-KBN=2（値はカンマで複数可）")
 
     p = sub.add_parser("check", help="ファイル全体の問題を1行ずつ一覧（--key で社員番号などを添える）")
     common(p)
     p.add_argument("--key", action="append", help="各行に添える項目（例: --key EMP-ID）。複数指定可")
     p.add_argument("--format", choices=["text", "csv", "jsonl"], default="text")
-    p.add_argument("--use", action="append", help="REDEFINES の読み方（view と同じ）")
+    p.add_argument("--use", action="append", help="REDEFINES の読み方（view と同じ。例: --use KOJIN-DETAIL:TOR-KBN=2）")
 
     p = sub.add_parser("dump", help="項目ごとに 16進 と値を並べて表示（文字化けの調査用）")
     common(p)
@@ -163,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("encode", help="JSON / JSONL のレコードから EBCDIC ファイルを作る（テストデータ用）")
     p.add_argument("records", help="JSONL（1行1レコード）または JSON の配列。形は view の出力と同じ")
     copybook_opts(p)
-    p.add_argument("--codepage", required=True, help="ibm930（カナ）/ ibm939（英小文字）。相手のシステムに合わせる")
+    p.add_argument("--codepage", required=True, help="ibm930（英小文字なし）/ ibm939（英小文字あり）。読み込む側のシステムに合わせる")
     p.add_argument("--rdw", action="store_true", help="可変長（各レコードの先頭に4バイトの RDW）で書く")
     p.add_argument("-o", "--output", required=True)
 
@@ -211,18 +240,31 @@ def main(argv: list[str] | None = None) -> int:
                         rdw_note = f", after its RDW {h.hex(' ').upper()} = {int.from_bytes(h[:2], 'big')} bytes incl. the RDW"
                     print(f"# record {rec['index']} (starts at byte {rec['offset'] + 1} of the file{rdw_note})")
                     raw = data[rec["offset"]:rec["offset"] + root.size]
+                    if res["rdw"]:
+                        raw = raw[:max(0, int.from_bytes(data[rec["offset"] - 4:rec["offset"] - 2], "big") - 4)]
                     flat = dict(_flat(rec["value"]))
+                    bad = _unreadable(rec)
+                    leaf_paths = {p for p, _o, _i in fields(root)}
                     by_path: dict[str, list] = {}
                     for i in rec["issues"]:
                         by_path.setdefault(i["path"], []).append(i)
+                    for i in rec["issues"]:
+                        if i["path"] not in leaf_paths:  # whole-record or group problems (short, alternative, no-rule)
+                            print(_issue_line(i))
                     print(f"{'pos':>6} {'field':<40} {_pad('value', 24)} hex")
                     for path, off, it in fields(root):
                         key = path.split(".", 1)[1] if "." in path else path
                         b = raw[off:off + it.size].hex(" ").upper()
                         mark = "".join(f"   ! pos {i['pos']} {i['kind']}: {i['detail']}" for i in by_path.get(path, []))
-                        v = flat.get(key)
-                        print(f"{off + 1:>6} {path:<40} {_pad('' if v is None else str(v), 24)} {b}{mark}")
-                return 0
+                        unused = any(i["kind"] == "alternative" and path.startswith(i["path"] + ".") for i in rec["issues"])
+                        shown = ("(not in the file)" if off >= len(raw) else "(not used here)" if unused
+                                 else _cell(key, flat.get(key), bad))
+                        print(f"{off + 1:>6} {path:<40} {_pad(shown, 24)} {b}{mark}")
+                sys.stdout.flush()
+                line, code = _summary(res, [dict(i, record=r["index"]) for r in res["records"] for i in r["issues"]],
+                                      len(res["records"]))
+                print(line, file=sys.stderr)
+                return code
             if a.cmd == "check":
                 return _check(a, res)
             if a.format == "jsonl":
@@ -231,23 +273,26 @@ def main(argv: list[str] | None = None) -> int:
                                       **({"_issues": rec["issues"]} if rec["issues"] else {})}, ensure_ascii=False))
             elif a.format == "csv":
                 buf = io.StringIO()
-                w = None
+                rows, cols = [], {}
                 for rec in res["records"]:
-                    row = dict(_flat(rec["value"]))
-                    if w is None:
-                        w = csv.DictWriter(buf, fieldnames=["index", *row.keys(), "issues"])
-                        w.writeheader()
-                    w.writerow({"index": rec["index"], **row,
-                                "issues": "; ".join(f"{i['path']} pos {i['pos']} {i['kind']}" for i in rec["issues"])})
+                    bad = _unreadable(rec)
+                    row = {k: _cell(k, v, bad) for k, v in _flat(rec["value"])}
+                    cols.update(dict.fromkeys(row))  # records may read different REDEFINES (--use NAME:FIELD=V)
+                    rows.append({"index": rec["index"], **row,
+                                 "issues": "; ".join(f"{i['path']} pos {i['pos']} {i['kind']}" for i in rec["issues"])})
+                w = csv.DictWriter(buf, fieldnames=["index", *_layout_order(root, cols), "issues"], restval="")
+                w.writeheader()
+                w.writerows(rows)
                 sys.stdout.write(buf.getvalue())
             else:
                 for rec in res["records"]:
                     print(f"## record {rec['index']}\n\n| field | value |\n|---|---|")
                     alt = [i["path"].split(".", 1)[1] for i in rec["issues"] if i["kind"] == "alternative" and "." in i["path"]]
+                    bad = _unreadable(rec)
                     for k, v in _flat(rec["value"]):
                         if any(k == p or k.startswith(p + ".") for p in alt):
                             v = "（REDEFINES の別の読み方。このレコードでは使われていない）"
-                        print(f"| {k} | {'' if v is None else v} |")
+                        print(f"| {k} | {v if isinstance(v, str) and v.startswith('（') else _cell(k, v, bad)} |")
                     for i in rec["issues"]:
                         if i["kind"] != "alternative":
                             print(_issue_line(i))
@@ -285,6 +330,8 @@ def main(argv: list[str] | None = None) -> int:
                 worst = 0
                 for c, (data, issues) in outs.items():
                     print(data.hex(" ").upper() if same else f"{c}: {data.hex(' ').upper()}")
+                    label = "IBM930 and IBM939 (same bytes)" if same and len(cps) > 1 else c.upper()
+                    _note(f"{len(data)} bytes in {label}" + ("" if a.dbcs else ", including SO/SI"))
                     for i in issues:
                         print(f"! {i.kind} (character {i.offset + 1}): {i.detail}", file=sys.stderr)
                     worst = max(worst, 1 if any(i.kind == "unencodable" for i in issues) else 0)

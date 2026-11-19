@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from .codec import decode_report
 from .copybook import Item, fields, parse, record_length
-from .record import RecordError, decode_record, encode_record, split_records
+from .record import RecordError, decode_field, decode_record, encode_record, redefines_choice, split_records
 
 
 def read_copybook(raw: bytes, encoding: str | None = "auto") -> tuple[str, str, str | None]:
@@ -50,8 +50,10 @@ def resolve(data: bytes, root: Item, codepage: str | None = "auto", rdw: bool | 
         else:
             rdw = False
             if size and len(data) % size:
-                notes.append(f"file size {len(data)} is not a multiple of the record length {size}, and it is not an "
-                             "RDW chain either: check the copybook, --lrecl, or line breaks added in transfer")
+                full, rest = divmod(len(data), size)
+                notes.append(f"file size {len(data)} = {full} record{'' if full == 1 else 's'} of {size} bytes + {rest} bytes: the last record is "
+                             f"cut off (it is reported as short), or the layout / --lrecl is wrong. It is not an RDW "
+                             "chain either")
     elif not rdw and (lrecl or root.size) and len(data) % (lrecl or root.size):
         hint = " — it looks like RDW records: try --rdw" if rdw_records(data) else " (wrong layout, RDW, or line breaks?)"
         notes.append(f"file size {len(data)} is not a multiple of the record length {lrecl or root.size}: "
@@ -93,6 +95,59 @@ def layout_rows(root: Item) -> list[dict]:
     return rows
 
 
+class UseRules:
+    """--use entries: "ADDR-JP" (every record) or "HOJIN-DETAIL:TOR-KBN=1" / "...:TOR-KBN=1,3" (records whose
+    TOR-KBN is one of those values), so files that mix record types read each record the right way."""
+
+    def __init__(self, root: Item, use: list | None):
+        self.static: list[str] = []
+        self.rules: list[tuple] = []  # (name, family, field path, field item, offset, values)
+        leaves = list(fields(root))
+        for u in use or []:
+            if ":" not in u:
+                redefines_choice(root, [u])  # validates the name
+                self.static.append(u)
+                continue
+            name, cond = (x.strip() for x in u.split(":", 1))
+            if "=" not in cond:
+                raise ValueError(f"--use {u!r}: write NAME:FIELD=VALUE, e.g. HOJIN-DETAIL:TOR-KBN=1")
+            fname, vals = (x.strip() for x in cond.split("=", 1))
+            family = next(iter(redefines_choice(root, [name])))
+            hit = [(path, off, it) for path, off, it in leaves
+                   if path.upper() == fname.upper() or path.upper().endswith("." + fname.upper())]
+            if not hit:
+                raise ValueError(f"--use {u!r}: no field named {fname}")
+            path, off, it = hit[0]
+            self.rules.append((name, family, path, it, off, {v.strip() for v in vals.split(",")}))
+
+    def for_record(self, raw: bytes, codepage: str) -> tuple[list[str], list[dict]]:
+        names = list(self.static)
+        issues = []
+        families: dict[str, tuple] = {}
+        for name, family, path, it, off, vals in self.rules:
+            value, _ = decode_field(raw[off:off + it.size], it, codepage)
+            shown = "" if value is None else str(value).strip()
+            families.setdefault(family, (path, off, shown, False))
+            if shown in vals or _same_number(shown, vals):
+                names.append(name)
+                families[family] = (path, off, shown, True)
+        for family, (path, off, shown, matched) in families.items():
+            if not matched:
+                issues.append({"path": path, "offset": off, "pos": off + 1, "kind": "no-rule",
+                               "detail": f"{path.rsplit('.', 1)[-1]} is {shown!r}, which no --use rule for "
+                                         f"{family} covers; every reading of {family} is shown"})
+        return names, issues
+
+
+def _same_number(shown: str, vals: set) -> bool:
+    from decimal import Decimal, InvalidOperation
+    try:
+        x = Decimal(shown)
+        return any(Decimal(v) == x for v in vals)
+    except (InvalidOperation, ValueError):
+        return False
+
+
 def read_records(data: bytes, root: Item, codepage: str = "auto", rdw: bool | None = None, lrecl: int | None = None,
                  skip: int = 0, limit: int | None = None, keep_spaces: bool = False, use: list | None = None) -> dict:
     """Decode records. codepage "auto" and rdw None are detected, and what was assumed is put in "notes"."""
@@ -103,14 +158,19 @@ def read_records(data: bytes, root: Item, codepage: str = "auto", rdw: bool | No
     total = 0
     if not rdw and lrecl != root.size:
         notes.append(f"record length {lrecl} differs from the copybook's {root.size} bytes")
+    rules = UseRules(root, use)
+    short = 0
     for k, off, raw in split_records(data, lrecl, rdw):
         total += 1
+        short += len(raw) < root.size
         if k < skip or (limit is not None and len(out) >= limit):
             continue
-        value, issues = decode_record(raw, root, codepage, keep_spaces, use=use)
+        names, extra = rules.for_record(raw, codepage) if rules.rules else (rules.static, [])
+        value, issues = decode_record(raw, root, codepage, keep_spaces, use=names or None)
+        issues = extra + issues
         out.append({"index": k + 1, "offset": off, "value": value, "issues": issues})
-    return {"codepage": codepage, "codepage_uncertain": r["codepage_uncertain"], "rdw": rdw, "record_length": lrecl, "records_in_file": total, "records": out,
-            "notes": notes}
+    return {"codepage": codepage, "codepage_uncertain": r["codepage_uncertain"], "rdw": rdw, "record_length": lrecl, "records_in_file": total,
+            "short_records": short, "records": out, "notes": notes}
 
 
 def write_records(records: list, root: Item, codepage: str = "ibm930", rdw: bool = False) -> tuple[bytes, list]:
@@ -145,7 +205,7 @@ def _odd_mix(text: str) -> int:
 def _field_texts(raw: bytes, root: Item, cp: str) -> list[str]:
     out = []
     for _p, off, it in fields(root):
-        if it.kind in ("text", "dbcs"):
+        if it.kind in ("text", "dbcs") and _p.rsplit(".", 1)[-1].upper() != "FILLER":
             out.append(decode_report(raw[off:off + it.size], cp, dbcs_only=it.kind == "dbcs", gaiji_mark="〓")[0].rstrip())
     return out
 

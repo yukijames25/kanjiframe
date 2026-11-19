@@ -74,7 +74,8 @@ ebcdicjp text 0E 45 65 45 63 0F                        # 16進 → 文字列（9
 
 - `--codepage ibm930|ibm939`：推定を上書きするとき（読むときの既定は auto。`encode` では必ず指定）
 - `--rdw` / `--no-rdw`：可変長（各レコードの先頭に4バイトの RDW）かどうか。既定はファイルから判定
-- `--use ADDR-JP`：REDEFINES のどちらの読み方を使うか（どちらで読んでも文字として成り立つことがあるため、レコード種別の規則を知っている人が指定します）
+- `--use ADDR-JP`：REDEFINES のどの読み方を使うか（どちらで読んでも文字として成り立つことがあるため、レコード種別の規則を知っている人が指定します）
+- `--use HOJIN-DETAIL:TOR-KBN=1 --use KOJIN-DETAIL:TOR-KBN=2`：法人と個人のようにレコード区分で読み方が変わるファイルを、1回で正しく読む（値はカンマで複数可。どの規則にも当たらない区分は `no-rule` として報告）
 - `--copybook-encoding cp932`：コピーブックの文字コード（既定 auto：UTF-8、だめなら Shift_JIS）
 
 **Claude Code から使う**
@@ -94,6 +95,7 @@ claude mcp add ebcdicjp -- ebcdicjp-mcp
 - 外字（ユーザー定義領域 6941〜7FFE）は、各社の外字表が無いと何の字か分かりません。値には「〓」を出し、問題（kind `gaiji`、コード付き）として報告します。Python から `keep_gaiji=True` で読むと私用領域（U+E000〜）の文字のまま受け取れます。
 - COMP-1 / COMP-2（浮動小数点）、SIGN の符号位置が特殊なもの、RENAMES（66 レベル）は未対応です。
 - REDEFINES は、どちらの読み方も表示し、片方だけが正しく読めるときはもう片方を「alternative」として目立たなくします。どちらも文字として読めてしまう場合は `--use` で指定してください。
+- 読めなかった値は、JSON では null、CSV と Markdown では `#ERR` になります（空の項目と区別するため）。
 
 ## 開発
 
