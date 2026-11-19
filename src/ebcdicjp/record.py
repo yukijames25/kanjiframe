@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from .codec import decode_report, encode_report
+from .codec import GETA, decode_report, encode_report
 from .copybook import Item, fields
 from .numbers import NumberError, binary, pack, unbin, unpack, unzone, zone
 
@@ -20,11 +20,11 @@ def _num_out(v: Decimal, scale: int):
     return f"{v:.{scale}f}"
 
 
-def decode_field(raw: bytes, it: Item, codepage: str, keep_spaces: bool = False):
+def decode_field(raw: bytes, it: Item, codepage: str, keep_spaces: bool = False, gaiji_mark: str | None = GETA):
     """Return (value, [issue dict without path/offset]) for one elementary field."""
     issues = []
     if it.kind in ("text", "dbcs"):
-        text, iss = decode_report(raw, codepage, dbcs_only=(it.kind == "dbcs"))
+        text, iss = decode_report(raw, codepage, dbcs_only=(it.kind == "dbcs"), gaiji_mark=gaiji_mark)
         issues += [{"kind": i.kind, "detail": i.detail, "at": i.offset} for i in iss]
         if not keep_spaces:
             text = text.rstrip(" 　")
@@ -79,7 +79,7 @@ def redefines_choice(root: Item, use: list[str] | None) -> dict:
 
 
 def decode_record(data: bytes, root: Item, codepage: str = "ibm930", keep_spaces: bool = False,
-                  include_filler: bool = False, use: list[str] | None = None):
+                  include_filler: bool = False, use: list[str] | None = None, keep_gaiji: bool = False):
     """Decode one record. Returns (value, issues) where issues carry path, offset and the raw bytes.
 
     *use* names the REDEFINES readings that apply (e.g. ["ADDR-JP"]); the others are left out.
@@ -87,13 +87,14 @@ def decode_record(data: bytes, root: Item, codepage: str = "ibm930", keep_spaces
     issues: list[dict] = []
     skip_redefines = redefines_choice(root, use)
     if len(data) < root.size:
-        issues.append({"path": root.name, "offset": len(data), "kind": "short",
+        issues.append({"path": root.name, "offset": len(data), "pos": len(data) + 1, "kind": "short",
                        "detail": f"record is {len(data)} bytes; the layout needs {root.size}"})
         data = data + b"\x40" * (root.size - len(data))
 
     def walk(it: Item, shift: int, path: str):
         def one(k):
             extra = shift + k * it.size
+            here = path + (f"({k + 1})" if it.occurs > 1 else "")
             if it.children:
                 out = {}
                 family: dict[str, list] = {}  # base name -> [(child, its issues)]
@@ -104,7 +105,7 @@ def decode_record(data: bytes, root: Item, codepage: str = "ibm930", keep_spaces
                     if skip_redefines and family_key in skip_redefines and c.name.upper() != skip_redefines[family_key]:
                         continue  # the caller said which reading of these bytes is the right one
                     mark = len(issues)
-                    member = f"{path}.{c.name}"
+                    member = f"{here}.{c.name}"
                     out[c.name] = walk(c, extra, member)
                     mine = issues[mark:]
                     del issues[mark:]
@@ -115,7 +116,7 @@ def decode_record(data: bytes, root: Item, codepage: str = "ibm930", keep_spaces
                     for (member, m), r in zip(members, real):
                         if clean and r:
                             # one line for the whole branch: these bytes are meant to be read the other way
-                            issues.append({"path": member, "offset": r[0]["offset"], "kind": "alternative",
+                            issues.append({"path": member, "offset": r[0]["offset"], "pos": r[0]["offset"] + 1, "kind": "alternative",
                                            "detail": f"{len(r)} problem(s) when these bytes are read as {member.rsplit('.', 1)[-1]} "
                                                      f"({r[0]['kind']}: {r[0]['detail']}); another REDEFINES reading "
                                                      f"is clean, so this one is probably not used here"})
@@ -125,14 +126,15 @@ def decode_record(data: bytes, root: Item, codepage: str = "ibm930", keep_spaces
                 return out
             off = it.offset + extra
             raw = data[off:off + it.size]
-            value, iss = decode_field(raw, it, codepage, keep_spaces)
+            value, iss = decode_field(raw, it, codepage, keep_spaces, None if keep_gaiji else GETA)
             by_kind: dict[str, list] = {}
             for i in iss:
                 by_kind.setdefault(i["kind"], []).append(i)
             for kind, group in by_kind.items():  # one line per field and kind, with a count
                 first = group[0]
                 detail = first["detail"] if len(group) == 1 else f"{len(group)} times, first: {first['detail']}"
-                issues.append({"path": path + (f"({k + 1})" if it.occurs > 1 else ""), "offset": off + first.get("at", 0),
+                at = off + first.get("at", 0)
+                issues.append({"path": here, "offset": at, "pos": at + 1,
                                "bytes": raw.hex(" ").upper(), "kind": kind, "detail": detail,
                                **({"count": len(group)} if len(group) > 1 else {})})
             return value
@@ -238,7 +240,7 @@ def split_records(data: bytes, lrecl: int, rdw: bool = False):
         while pos + 4 <= len(data):
             n = int.from_bytes(data[pos:pos + 2], "big")
             if n < 4:
-                raise RecordError(f"record {k + 1} at byte {pos}: RDW length {n} is invalid")
+                raise RecordError(f"record {k + 1} at byte {pos + 1}: RDW length {n} is invalid")
             yield k, pos + 4, data[pos + 4:pos + n]
             pos += n
             k += 1

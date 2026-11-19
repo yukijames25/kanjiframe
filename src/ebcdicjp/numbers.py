@@ -29,11 +29,11 @@ def unpack(data: bytes, scale: int = 0) -> Decimal:
     for i, b in enumerate(data):
         hi, lo = b >> 4, b & 0xF
         if hi > 9:
-            raise NumberError(f"byte {i} ({b:02X}): {hi:X} is not a digit")
+            raise NumberError(f"byte {i + 1} of the field ({b:02X}): {hi:X} is not a digit")
         digits.append(str(hi))
         if i < len(data) - 1:
             if lo > 9:
-                raise NumberError(f"byte {i} ({b:02X}): {lo:X} is not a digit")
+                raise NumberError(f"byte {i + 1} of the field ({b:02X}): {lo:X} is not a digit")
             digits.append(str(lo))
         elif lo not in POSITIVE | NEGATIVE:
             raise NumberError(f"last byte ({b:02X}): sign nibble {lo:X} is not C, D or F")
@@ -61,11 +61,11 @@ def unzone(data: bytes, scale: int = 0) -> Decimal:
     for i, b in enumerate(data):
         zone, d = b >> 4, b & 0xF
         if d > 9:
-            raise NumberError(f"byte {i} ({b:02X}) is not a digit")
+            raise NumberError(f"byte {i + 1} of the field ({b:02X}) is not a digit")
         if i < len(data) - 1 and zone != 0xF:
             if b == 0x40:
-                raise NumberError(f"byte {i} is a space (40), not a digit: the field may be blank or left-aligned")
-            raise NumberError(f"byte {i} ({b:02X}) is not a digit")
+                raise NumberError(f"byte {i + 1} of the field is a space (40), not a digit: the field may be blank or left-aligned")
+            raise NumberError(f"byte {i + 1} of the field ({b:02X}) is not a digit")
         digits.append(str(d))
     sign = data[-1] >> 4
     if sign not in POSITIVE | NEGATIVE:

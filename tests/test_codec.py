@@ -55,7 +55,8 @@ class BasicTests(unittest.TestCase):
 
     def test_report_lists_problems_with_offsets(self):
         text, issues = ebcdicjp.decode_report(b"\xc1\x0e\x45\x65\xc1", "ibm939")
-        self.assertEqual([i.kind for i in issues], ["odd-dbcs", "bad-shift"])
+        self.assertEqual([i.kind for i in issues], ["bad-shift"])  # the lone C1 at the end is the missing SI, reported once
+        self.assertEqual(issues[0].offset, 1)  # pointed at the SO where the kanji run began
         with self.assertRaises(UnicodeDecodeError):
             b"\x0f".decode("ibm939")
         self.assertEqual(b"\x0f".decode("ibm939", "replace"), "")

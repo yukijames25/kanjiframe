@@ -23,21 +23,27 @@ CUST-REC  length=224
     ...
 
 $ ebcdicjp view CUST.dat -c CUSTMAST.cpy --format md --use ADDR-JP
+note: code page: IBM930 (IBM939 would read 30 bytes as lowercase letters with only 17% vowels — ...)
 ## record 1
 | CUST-KANJI | 山田太郎 |
 | BALANCE | 1234567.89 |
 | ADDR-JP.ADDR-REST | 千代田区丸の内１−１−１ |
 ...
-## record 5
-| BALANCE |  |
-  ! CUST-REC.BALANCE @88 bad-number: byte 2 (4A): A is not a digit
+
+$ ebcdicjp check EMPMAST.dat -c EMPMAST.cpy --key EMP-ID
+note: copybook is not UTF-8; read it as Shift_JIS (cp932)
+note: assumed RDW variable-length records (6 records): ...
+record 3  EMP-ID=E0000003  EMP-REC.ALLOWANCES(1).ALLOW-NAME  pos 92  [0E 46 50 ...]  bad-shift: ... (missing SI)
+record 4  EMP-ID=E0000004  EMP-REC.EMP-NAME-KANJI  pos 13  [... 69 41 ...]  gaiji: user-defined character (外字) 6941
+record 6  EMP-ID=E0000006  EMP-REC.DEPT-CD  pos 79  [C1 F1 C2 F2]  bad-number: byte 1 of the field (C1) is not a digit
 ```
 
 - **コーデック**：IBM930（カナ）・IBM939（英小文字）。SO(0E)/SI(0F) で切り替わる漢字、PIC N（SO/SI なしの2バイト）。
   `b"...".decode("ibm930")` のように Python の `codecs` からも使えます。
 - **数値**：パック10進（COMP-3）、ゾーン10進（符号付き・SIGN SEPARATE）、バイナリ（COMP）。金額は Decimal で桁を落としません。
 - **コピーブック**：PIC X / N / G / 9 / S9 / V、COMP-3 / COMP / BINARY / DISPLAY-1、OCCURS（DEPENDING ON は最大で配置）、REDEFINES、FILLER、固定形式（1〜6桁目の連番・7桁目のコメント）。
-- **問題の場所を示す**：読めないバイト、SO/SI の崩れ、数字でないパック10進などを「項目のパス・バイト位置・実際のバイト」で報告します。黙って置き換えません。
+- **問題の場所を示す**：読めないバイト、外字、SO/SI の崩れ、数字でないパック10進などを「項目のパス（OCCURS の何番目かも）・バイト位置（1始まり）・実際のバイト」で報告します。黙って置き換えません。`check` でファイル全体の問題を社員番号などのキー付きで一覧できます。
+- **決めつけずに推定する**：コードページ（IBM930/939）、RDW の有無、コピーブックの文字コード（UTF-8/Shift_JIS）はデータから判定し、何を仮定したかを `note:` で必ず表示します。
 - **戻らない文字を知らせる**：「〜」(U+301C) は 43A1 に変換され、読み戻すと「～」(U+FF5E) になります。こうした文字（52種）を書き込み時に報告します。
 - **テストデータを作る**：JSON から固定長の EBCDIC ファイルを作ります（`encode`）。
 - **AI エージェントから使う**：MCP サーバー（`describe_layout` / `read_records` / `write_records` / `decode_bytes` / `encode_text` / `detect_codepage`）。
@@ -58,17 +64,18 @@ $ ebcdicjp view CUST.dat -c CUSTMAST.cpy --format md --use ADDR-JP
 pip install git+https://github.com/yukijames25/ebcdicjp
 ebcdicjp layout CUSTMAST.cpy                          # 項目の位置と長さ
 ebcdicjp view   CUST.dat -c CUSTMAST.cpy -n 5          # JSONL（--format csv / md も可）
-ebcdicjp dump   CUST.dat -c CUSTMAST.cpy -n 1          # 項目ごとに16進と値（文字化けの調査）
+ebcdicjp check  CUST.dat -c CUSTMAST.cpy --key CUST-NO # 全件の問題を1行ずつ（キー付き）
+ebcdicjp dump   CUST.dat -c CUSTMAST.cpy --skip 4 -n 1 # 5件目の項目ごとの16進と値（文字化けの調査）
 ebcdicjp detect CUST.dat -c CUSTMAST.cpy               # IBM930 と IBM939 のどちらか
-ebcdicjp encode records.jsonl -c CUSTMAST.cpy -o TEST.dat   # テストデータを作る
+ebcdicjp encode records.jsonl -c CUSTMAST.cpy -o TEST.dat --codepage ibm930   # テストデータを作る
 ebcdicjp text --encode "山田〜"                        # 文字列 → 16進（戻らない文字も表示）
-ebcdicjp text 0E 45 65 45 63 0F                        # 16進 → 文字列
+ebcdicjp text 0E 45 65 45 63 0F                        # 16進 → 文字列（930 と 939 で違えば両方）
 ```
 
-- `--codepage ibm939`：英小文字を含む場合（既定は ibm930）
-- `--rdw`：可変長（各レコードの先頭に4バイトの RDW）
+- `--codepage ibm930|ibm939`：推定を上書きするとき（読むときの既定は auto。`encode` では必ず指定）
+- `--rdw` / `--no-rdw`：可変長（各レコードの先頭に4バイトの RDW）かどうか。既定はファイルから判定
 - `--use ADDR-JP`：REDEFINES のどちらの読み方を使うか（どちらで読んでも文字として成り立つことがあるため、レコード種別の規則を知っている人が指定します）
-- `--copybook-encoding cp932`：コピーブックが Shift_JIS のとき
+- `--copybook-encoding cp932`：コピーブックの文字コード（既定 auto：UTF-8、だめなら Shift_JIS）
 
 **Claude Code から使う**
 
@@ -81,7 +88,7 @@ claude mcp add ebcdicjp -- ebcdicjp-mcp
 ## 制限
 
 - 対応する文字コードは IBM930 / IBM939（日本語 EBCDIC の代表的な2つ）です。KEIS（日立）・JEF（富士通）は、仕様を確かめてから対応予定です。
-- 外字（ユーザー定義文字）の領域は、JDK の変換表に無いため「unmapped」として報告します。
+- 外字（ユーザー定義領域 6941〜7FFE）は、各社の外字表が無いと何の字か分かりません。値には「〓」を出し、問題（kind `gaiji`、コード付き）として報告します。Python から `keep_gaiji=True` で読むと私用領域（U+E000〜）の文字のまま受け取れます。
 - COMP-1 / COMP-2（浮動小数点）、SIGN の符号位置が特殊なもの、RENAMES（66 レベル）は未対応です。
 - REDEFINES は、どちらの読み方も表示し、片方だけが正しく読めるときはもう片方を「alternative」として目立たなくします。どちらも文字として読めてしまう場合は `--use` で指定してください。
 

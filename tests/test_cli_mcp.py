@@ -33,7 +33,7 @@ class CliTests(unittest.TestCase):
         self.dat = os.path.join(self.tmp, "c.dat")
 
     def test_encode_then_view(self):
-        code, out, _ = run("encode", self.jsonl, "-c", CPY, "-o", self.dat)
+        code, out, _ = run("encode", self.jsonl, "-c", CPY, "-o", self.dat, "--codepage", "ibm930")
         self.assertEqual(code, 0, out)
         code, out, err = run("view", self.dat, "-c", CPY)
         rec = json.loads(out.splitlines()[0])
@@ -41,7 +41,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("0 problem", err)
 
     def test_broken_file_is_reported(self):
-        run("encode", self.jsonl, "-c", CPY, "-o", self.dat)
+        run("encode", self.jsonl, "-c", CPY, "-o", self.dat, "--codepage", "ibm930")
         with open(self.dat, "ab") as fh:
             fh.write(b"\x40\x40\x40")  # trailing garbage: size is no longer a multiple of LRECL
         code, out, err = run("view", self.dat, "-c", CPY)
@@ -68,7 +68,7 @@ class McpTests(unittest.TestCase):
             {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05"}},
             {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
             {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "write_records", "arguments": {
-                "records": [{"CUST-KANJI": "高橋", "BALANCE": "-1.00"}], "copybook": CPY, "output_path": out}}},
+                "records": [{"CUST-KANJI": "高橋", "BALANCE": "-1.00"}], "copybook": CPY, "output_path": out, "codepage": "ibm930"}}},
             {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "read_records", "arguments": {
                 "path": out, "copybook": CPY}}},
         ]

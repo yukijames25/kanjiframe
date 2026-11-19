@@ -30,10 +30,24 @@ class Issue:
         return {"offset": self.offset, "kind": self.kind, "detail": self.detail}
 
 
-def decode_report(data: bytes, codepage: str = "ibm930", dbcs_only: bool = False) -> tuple[str, list[Issue]]:
-    """Decode without raising; unmapped bytes become U+FFFD and are listed."""
+GETA = "〓"  # 〓: the conventional stand-in for a character that cannot be shown
+
+
+def is_gaiji(cp: int) -> bool:
+    """IBM user-defined area (6941-7FFE) decodes to the Unicode private-use area."""
+    return 0xE000 <= cp <= 0xF8FF
+
+
+def decode_report(data: bytes, codepage: str = "ibm930", dbcs_only: bool = False,
+                  gaiji_mark: str | None = None) -> tuple[str, list[Issue]]:
+    """Decode without raising; unmapped bytes become U+FFFD and are listed.
+
+    外字 (user-defined characters) decode to private-use code points and are always listed as
+    "gaiji"; with *gaiji_mark* (e.g. "〓") they are also shown as that mark instead of an invisible character.
+    """
     t = load(codepage)
     out: list[str] = []
+    so_at = None
     issues: list[Issue] = []
     double = dbcs_only
     i = 0
@@ -44,6 +58,7 @@ def decode_report(data: bytes, codepage: str = "ibm930", dbcs_only: bool = False
             if double:
                 issues.append(Issue(i, "bad-shift", "SO while already in double-byte mode"))
             double = True
+            so_at = i
             i += 1
             continue
         if not dbcs_only and b == SI:
@@ -54,7 +69,8 @@ def decode_report(data: bytes, codepage: str = "ibm930", dbcs_only: bool = False
             continue
         if double:
             if i + 1 >= n or (not dbcs_only and data[i + 1] in (SO, SI)):
-                issues.append(Issue(i, "odd-dbcs", f"lone byte {b:02X} in double-byte mode"))
+                if not (i + 1 >= n and not dbcs_only):  # at the end of mixed data this is the missing SI, reported below
+                    issues.append(Issue(i, "odd-dbcs", f"lone byte {b:02X} in double-byte mode"))
                 out.append("�")
                 i += 1
                 continue
@@ -63,6 +79,9 @@ def decode_report(data: bytes, codepage: str = "ibm930", dbcs_only: bool = False
             if cp is None:
                 issues.append(Issue(i, "unmapped", f"double-byte {code:04X} has no character in {t.name}"))
                 out.append("�")
+            elif is_gaiji(cp):
+                issues.append(Issue(i, "gaiji", f"user-defined character (外字) {code:04X}: needs the site's 外字 table"))
+                out.append(gaiji_mark or chr(cp))
             else:
                 out.append(chr(cp))
             i += 2
@@ -75,7 +94,8 @@ def decode_report(data: bytes, codepage: str = "ibm930", dbcs_only: bool = False
                 out.append(chr(cp))
             i += 1
     if double and not dbcs_only:
-        issues.append(Issue(n, "bad-shift", "data ends in double-byte mode (missing SI)"))
+        at = so_at if so_at is not None else n
+        issues.append(Issue(at, "bad-shift", "the double-byte run started here has no SI before the field ends (missing SI)"))
     return "".join(out), issues
 
 
@@ -124,6 +144,7 @@ def _single_to_double(t, cp: int):
 
 def decode(data: bytes, codepage: str = "ibm930", errors: str = "strict", dbcs_only: bool = False) -> str:
     text, issues = decode_report(data, codepage, dbcs_only)
+    issues = [x for x in issues if x.kind != "gaiji"]  # 外字 decode losslessly to private-use code points
     if issues and errors == "strict":
         raise UnicodeDecodeError(canonical(codepage) or codepage, bytes(data), issues[0].offset,
                                  min(issues[0].offset + 1, len(data)) or 1, issues[0].detail)

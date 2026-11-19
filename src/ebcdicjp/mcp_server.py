@@ -11,13 +11,17 @@ import sys
 import traceback
 
 from . import __version__
-from .api import detect_codepage, layout_rows, load_layout, read_records, text_preview, write_records
+from .api import detect_codepage, read_copybook, layout_rows, load_layout, read_records, text_preview, write_records
 from .codec import encode_report
 
 PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"]
 
-_CP = {"type": "string", "enum": ["ibm930", "ibm939"], "default": "ibm930",
-       "description": "ibm930 = katakana in single-byte (no lowercase); ibm939 = Latin with lowercase. Use detect_codepage if unsure."}
+_CP = {"type": "string", "enum": ["auto", "ibm930", "ibm939"], "default": "auto",
+       "description": "ibm930 = katakana in single-byte (no lowercase); ibm939 = Latin with lowercase. "
+                      "auto detects it and says what it assumed in notes."}
+_CPW = {"type": "string", "enum": ["ibm930", "ibm939"],
+        "description": "Code page of the system that will read the file: ibm930 (katakana) or ibm939 (lowercase)."}
+_CBE = {"type": "string", "default": "auto", "description": "auto = UTF-8, else Shift_JIS (cp932)"}
 _CB = {"type": "string", "description": "Absolute path to the COBOL copybook"}
 
 TOOLS = [
@@ -26,19 +30,21 @@ TOOLS = [
         "description": "Parse a COBOL copybook and list every field with its byte position, length and type "
                        "(text = PIC X with SO/SI kanji, dbcs = PIC N, zoned, packed = COMP-3, binary = COMP).",
         "inputSchema": {"type": "object", "properties": {"copybook": _CB, "record": {"type": "string"},
-                                                          "copybook_encoding": {"type": "string", "default": "utf-8"}},
+                                                          "copybook_encoding": _CBE},
                         "required": ["copybook"]},
     },
     {
         "name": "read_records",
         "description": "Decode records of a Japanese mainframe data file (fixed-length, or variable with RDW) using a "
                        "copybook. Returns nested JSON per record plus issues located by field path and byte offset "
-                       "(unmapped bytes, broken SO/SI, invalid packed/zoned numbers). Read a few records first (limit).",
+                       "(pos is 1-based): unmapped bytes, 外字 (gaiji, shown as 〓), broken SO/SI, invalid packed/zoned numbers. "
+                       "Code page and RDW are detected unless given; read the notes. Read a few records first (limit).",
         "inputSchema": {"type": "object", "properties": {
             "path": {"type": "string", "description": "Absolute path to the data file"}, "copybook": _CB, "codepage": _CP,
-            "record": {"type": "string"}, "rdw": {"type": "boolean", "default": False},
+            "record": {"type": "string"},
+            "rdw": {"type": "boolean", "description": "RDW variable-length records; omit to detect"},
             "lrecl": {"type": "integer"}, "skip": {"type": "integer", "default": 0},
-            "limit": {"type": "integer", "default": 20}, "copybook_encoding": {"type": "string", "default": "utf-8"},
+            "limit": {"type": "integer", "default": 20}, "copybook_encoding": _CBE,
             "use": {"type": "array", "items": {"type": "string"},
                     "description": "REDEFINES readings that apply to this file, e.g. [\"ADDR-JP\"]; the others are omitted"}},
             "required": ["path", "copybook"]},
@@ -48,10 +54,10 @@ TOOLS = [
         "description": "Build a fixed-length EBCDIC file (test data) from JSON records shaped like read_records output. "
                        "Missing fields are spaces / zero. Reports characters that will not read back the same (〜 → ～).",
         "inputSchema": {"type": "object", "properties": {
-            "records": {"type": "array", "items": {"type": "object"}}, "copybook": _CB, "codepage": _CP,
+            "records": {"type": "array", "items": {"type": "object"}}, "copybook": _CB, "codepage": _CPW,
             "output_path": {"type": "string"}, "record": {"type": "string"}, "rdw": {"type": "boolean", "default": False},
-            "copybook_encoding": {"type": "string", "default": "utf-8"}},
-            "required": ["records", "copybook", "output_path"]},
+            "copybook_encoding": _CBE},
+            "required": ["records", "copybook", "output_path", "codepage"]},
     },
     {
         "name": "decode_bytes",
@@ -71,7 +77,7 @@ TOOLS = [
         "name": "detect_codepage",
         "description": "Guess whether a data file is IBM930 or IBM939 (says 'ambiguous' with both previews when it can't tell).",
         "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "copybook": _CB,
-                                                          "copybook_encoding": {"type": "string", "default": "utf-8"}},
+                                                          "copybook_encoding": _CBE},
                         "required": ["path"]},
     },
 ]
@@ -91,21 +97,24 @@ def _file(path) -> bytes:
 
 
 def _layout(args):
-    return load_layout(_file(args["copybook"]).decode(args.get("copybook_encoding") or "utf-8"), args.get("record"))
+    text, _enc, _note = read_copybook(_file(args["copybook"]), args.get("copybook_encoding") or "auto")
+    return load_layout(text, args.get("record"))
 
 
 def call_tool(name: str, a: dict) -> dict:
-    cp = a.get("codepage") or "ibm930"
+    cp = a.get("codepage") or ("auto" if name == "read_records" else "ibm930")
     if name == "describe_layout":
         root = _layout(a)
         return _text({"record": root.name, "length": root.size, "fields": layout_rows(root)})
     if name == "read_records":
         root = _layout(a)
-        res = read_records(_file(a["path"]), root, cp, bool(a.get("rdw")), a.get("lrecl"),
+        res = read_records(_file(a["path"]), root, cp, a.get("rdw"), a.get("lrecl"),
                            int(a.get("skip") or 0), int(a.get("limit") or 20), use=a.get("use"))
         return _text(res)
     if name == "write_records":
         out = a["output_path"]
+        if not a.get("codepage"):
+            return _text("codepage is required: ibm930 or ibm939 (the system that will read the file)", True)
         if os.path.exists(out):
             return _text(f"refusing to overwrite an existing file: {out}", True)
         data, notes = write_records(a["records"], _layout(a), cp, bool(a.get("rdw")))
