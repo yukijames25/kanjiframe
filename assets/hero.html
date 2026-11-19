@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>ebcdicjp hero</title>
+<title>kanjiframe hero</title>
 <!-- Source of assets/hero.png. Render: msedge --headless --screenshot=hero.png --window-size=1600,900 --force-device-scale-factor=2 hero.html -->
 <style>
   :root {
@@ -19,17 +19,17 @@
     background-image: repeating-linear-gradient(0deg, transparent 0 5px, rgba(255,255,255,0.018) 5px 6px);
     font-family: "Noto Sans JP", "Yu Gothic", sans-serif;
   }
-  .content { position: absolute; left: 150px; top: 205px; }
+  .content { position: absolute; left: 140px; top: 205px; }
   .word { display: flex; align-items: center; font-family: "Cascadia Mono", Consolas, monospace; font-weight: 700; }
-  .word .base { font-size: 176px; color: var(--ink); letter-spacing: -0.02em; line-height: 1; }
-  .word .jp { font-size: 176px; color: var(--green); line-height: 1; margin: 0 6px; letter-spacing: -0.02em; }
+  .word .base { font-size: 160px; color: var(--ink); letter-spacing: -0.03em; line-height: 1; margin-left: 18px; }
+  .word .jp { font-size: 160px; color: var(--green); line-height: 1; margin: 0 4px; letter-spacing: -0.03em; }
   .shift {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    height: 168px; width: 70px; margin: 0 6px; box-sizing: border-box;
+    height: 168px; width: 66px; margin: 0 4px; box-sizing: border-box;
     border: 4px solid var(--green); color: var(--green);
     font-size: 30px; font-weight: 700; letter-spacing: 0.02em;
   }
-  .shift.so { border-right: none; border-radius: 14px 0 0 14px; margin-left: 22px; }
+  .shift.so { border-right: none; border-radius: 14px 0 0 14px; margin-left: 0; }
   .shift.si { border-left: none;  border-radius: 0 14px 14px 0; }
   .hex {
     margin-top: 40px; font-family: "Cascadia Mono", Consolas, monospace; font-size: 34px; color: var(--dim);
@@ -46,7 +46,7 @@
   <div class="card">
     <div class="content">
       <div class="word">
-        <span class="base">ebcdic</span><span class="shift so">0E</span><span class="jp">jp</span><span class="shift si">0F</span>
+        <span class="shift so">0E</span><span class="jp">kanji</span><span class="shift si">0F</span><span class="base">frame</span>
       </div>
       <div class="hex"><span class="k">0E</span> 45 65 45 63 <span class="k">0F</span><span class="arrow">→</span><span class="out">山田</span></div>
       <div class="tag">メインフレームの日本語を、手元とAIで読み書きする。</div>

@@ -1,4 +1,4 @@
-"""Pack the JDK dumps (tools/GenTables.java -> local/*.tsv) into src/ebcdicjp/data/*.bin.
+"""Pack the JDK dumps (tools/GenTables.java -> local/*.tsv) into src/kanjiframe/data/*.bin.
 
     java tools/GenTables.java local
     python tools/build_tables.py local
@@ -14,7 +14,7 @@ import sys
 import zlib
 
 src = sys.argv[1] if len(sys.argv) > 1 else "local"
-dst = os.path.join(os.path.dirname(__file__), "..", "src", "ebcdicjp", "data")
+dst = os.path.join(os.path.dirname(__file__), "..", "src", "kanjiframe", "data")
 os.makedirs(dst, exist_ok=True)
 for name in ("ibm930", "ibm939"):
     sbcs = [0xFFFF] * 256

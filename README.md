@@ -1,11 +1,11 @@
-![ebcdicjp — メインフレームの日本語を、手元とAIで読み書きする。](assets/hero.png)
+![kanjiframe — メインフレームの日本語を、手元とAIで読み書きする。](assets/hero.png)
 
-# ebcdicjp
+# kanjiframe
 
 **メインフレームの日本語データ（EBCDIC のカナ・漢字、COBOL のレコード）を、開発PCや AI エージェントから読み書きするツール。**
-Python 標準ライブラリだけで動きます（依存ゼロ）。
+Python 標準ライブラリだけで動きます（依存ゼロ）。旧名は ebcdicjp です。
 
-*ebcdicjp reads and writes Japanese mainframe data — EBCDIC IBM930/939 kana and kanji with SO/SI, COBOL copybook layouts, packed and zoned decimals — with zero dependencies. CLI, Python codecs and an MCP server for AI agents.*
+*kanjiframe reads and writes Japanese mainframe data — EBCDIC IBM930/939 kana and kanji with SO/SI, COBOL copybook layouts, packed and zoned decimals — with zero dependencies. CLI, Python codecs and an MCP server for AI agents.*
 
 ## なぜ
 
@@ -16,7 +16,7 @@ Python 標準ライブラリだけで動きます（依存ゼロ）。
 ## できること
 
 ```
-$ ebcdicjp layout CUSTMAST.cpy
+$ kanjiframe layout CUSTMAST.cpy
 CUST-REC  length=224
      1    10  zoned       CUST-REC.CUST-NO  9(10)
     11    30  text        CUST-REC.CUST-KANA  X(30)
@@ -24,7 +24,7 @@ CUST-REC  length=224
     89     8  packed  V2  CUST-REC.BALANCE  S9(13)V99
     ...
 
-$ ebcdicjp view CUST.dat -c CUSTMAST.cpy --format md --use ADDR-JP
+$ kanjiframe view CUST.dat -c CUSTMAST.cpy --format md --use ADDR-JP
 note: code page: IBM930 (IBM939 would read 30 bytes as lowercase letters with only 17% vowels — ...)
 ## record 1
 | CUST-KANJI | 山田太郎 |
@@ -32,7 +32,7 @@ note: code page: IBM930 (IBM939 would read 30 bytes as lowercase letters with on
 | ADDR-JP.ADDR-REST | 千代田区丸の内１−１−１ |
 ...
 
-$ ebcdicjp check EMPMAST.dat -c EMPMAST.cpy --key EMP-ID
+$ kanjiframe check EMPMAST.dat -c EMPMAST.cpy --key EMP-ID
 note: copybook is not UTF-8; read it as Shift_JIS (cp932)
 note: assumed RDW variable-length records (6 records): ...
 record 3  EMP-ID=E0000003  EMP-REC.ALLOWANCES(1).ALLOW-NAME  pos 92  [0E 46 50 ...]  bad-shift: ... (missing SI)
@@ -63,15 +63,15 @@ record 6  EMP-ID=E0000006  EMP-REC.DEPT-CD  pos 79  [C1 F1 C2 F2]  bad-number: b
 ## インストールと使い方
 
 ```bash
-pip install git+https://github.com/yukijames25/ebcdicjp
-ebcdicjp layout CUSTMAST.cpy                          # 項目の位置と長さ
-ebcdicjp view   CUST.dat -c CUSTMAST.cpy -n 5          # JSONL（--format csv / md も可）
-ebcdicjp check  CUST.dat -c CUSTMAST.cpy --key CUST-NO # 全件の問題を1行ずつ（キー付き）
-ebcdicjp dump   CUST.dat -c CUSTMAST.cpy --skip 4 -n 1 # 5件目の項目ごとの16進と値（文字化けの調査）
-ebcdicjp detect CUST.dat -c CUSTMAST.cpy               # IBM930 と IBM939 のどちらか
-ebcdicjp encode records.jsonl -c CUSTMAST.cpy -o TEST.dat --codepage ibm930   # テストデータを作る
-ebcdicjp text --encode "山田〜"                        # 文字列 → 16進（戻らない文字も表示）
-ebcdicjp text 0E 45 65 45 63 0F                        # 16進 → 文字列（930 と 939 で違えば両方）
+pip install git+https://github.com/yukijames25/kanjiframe
+kanjiframe layout CUSTMAST.cpy                          # 項目の位置と長さ
+kanjiframe view   CUST.dat -c CUSTMAST.cpy -n 5          # JSONL（--format csv / md も可）
+kanjiframe check  CUST.dat -c CUSTMAST.cpy --key CUST-NO # 全件の問題を1行ずつ（キー付き）
+kanjiframe dump   CUST.dat -c CUSTMAST.cpy --skip 4 -n 1 # 5件目の項目ごとの16進と値（文字化けの調査）
+kanjiframe detect CUST.dat -c CUSTMAST.cpy               # IBM930 と IBM939 のどちらか
+kanjiframe encode records.jsonl -c CUSTMAST.cpy -o TEST.dat --codepage ibm930   # テストデータを作る
+kanjiframe text --encode "山田〜"                        # 文字列 → 16進（戻らない文字も表示）
+kanjiframe text 0E 45 65 45 63 0F                        # 16進 → 文字列（930 と 939 で違えば両方）
 ```
 
 - `--codepage ibm930|ibm939`：推定を上書きするとき（読むときの既定は auto。`encode` では必ず指定）
@@ -83,10 +83,10 @@ ebcdicjp text 0E 45 65 45 63 0F                        # 16進 → 文字列（9
 **Claude Code から使う**
 
 ```bash
-claude mcp add ebcdicjp -- ebcdicjp-mcp
+claude mcp add kanjiframe -- kanjiframe-mcp
 ```
 
-`.claude/skills/ebcdicjp/` に、エージェント向けの手順（スキル）があります。
+`.claude/skills/kanjiframe/` に、エージェント向けの手順（スキル）があります。
 
 **終了コード**：0 = 問題なし、1 = 問題あり（またはコードページを決められない）、2 = エラー（ファイルが無い、コピーブックが読めないなど）。
 `view` / `check` の最後の行が件数のまとめです。数値項目が空白（blank）のものは問題とは別に数えます。

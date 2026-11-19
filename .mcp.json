@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "ebcdicjp": {
+    "kanjiframe": {
       "command": "python",
-      "args": ["-m", "ebcdicjp.mcp_server"],
+      "args": ["-m", "kanjiframe.mcp_server"],
       "env": {"PYTHONPATH": "src"}
     }
   }

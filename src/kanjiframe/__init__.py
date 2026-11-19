@@ -1,4 +1,4 @@
-"""ebcdicjp — read and write Japanese mainframe data (EBCDIC kana/kanji, COBOL records)."""
+"""kanjiframe — read and write Japanese mainframe data (EBCDIC kana/kanji, COBOL records)."""
 from .codec import decode, decode_report, encode, encode_report, register
 
 __version__ = "0.1.0"

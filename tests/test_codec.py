@@ -11,8 +11,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-import ebcdicjp  # noqa: E402
-from ebcdicjp.tables import load  # noqa: E402
+import kanjiframe  # noqa: E402
+from kanjiframe.tables import load  # noqa: E402
 
 JAVA = shutil.which("java")
 
@@ -50,11 +50,11 @@ class BasicTests(unittest.TestCase):
 
     def test_930_vs_939_lowercase(self):
         # IBM930 has half-width katakana where IBM939 has a-z
-        self.assertEqual(ebcdicjp.decode(b"\x81", "ibm939"), "a")
-        self.assertNotEqual(ebcdicjp.decode(b"\x81", "ibm930"), "a")
+        self.assertEqual(kanjiframe.decode(b"\x81", "ibm939"), "a")
+        self.assertNotEqual(kanjiframe.decode(b"\x81", "ibm930"), "a")
 
     def test_report_lists_problems_with_offsets(self):
-        text, issues = ebcdicjp.decode_report(b"\xc1\x0e\x45\x65\xc1", "ibm939")
+        text, issues = kanjiframe.decode_report(b"\xc1\x0e\x45\x65\xc1", "ibm939")
         self.assertEqual([i.kind for i in issues], ["bad-shift"])  # the lone C1 at the end is the missing SI, reported once
         self.assertEqual(issues[0].offset, 1)  # pointed at the SO where the kanji run began
         with self.assertRaises(UnicodeDecodeError):
@@ -62,21 +62,21 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(b"\x0f".decode("ibm939", "replace"), "")
 
     def test_one_way_characters_are_reported(self):
-        data, issues = ebcdicjp.encode_report("〜", "ibm930")
+        data, issues = kanjiframe.encode_report("〜", "ibm930")
         self.assertEqual(issues[0].kind, "one-way")
-        self.assertEqual(ebcdicjp.decode(data, "ibm930"), "～")  # U+301C comes back as U+FF5E
+        self.assertEqual(kanjiframe.decode(data, "ibm930"), "～")  # U+301C comes back as U+FF5E
 
     def test_unencodable(self):
         with self.assertRaises(UnicodeEncodeError):
             "😀".encode("ibm930")
-        data, issues = ebcdicjp.encode_report("A😀", "ibm939")
+        data, issues = kanjiframe.encode_report("A😀", "ibm939")
         self.assertEqual(issues[0].kind, "unencodable")
 
     def test_dbcs_only_fields(self):
-        data = ebcdicjp.encode("山田　A", "ibm939", dbcs_only=True)  # PIC N: no SO/SI, A becomes Ａ
+        data = kanjiframe.encode("山田　A", "ibm939", dbcs_only=True)  # PIC N: no SO/SI, A becomes Ａ
         self.assertEqual(len(data), 8)
         self.assertNotIn(0x0E, data)
-        self.assertEqual(ebcdicjp.decode(data, "ibm939", dbcs_only=True), "山田　Ａ")
+        self.assertEqual(kanjiframe.decode(data, "ibm939", dbcs_only=True), "山田　Ａ")
 
 
 @unittest.skipUnless(JAVA, "java not installed: reference comparison skipped")
@@ -86,10 +86,10 @@ class JdkReferenceTests(unittest.TestCase):
         strings = sample_strings(t, 600, seed)
         want = oracle("enc", charset, [" ".join(f"{ord(c):04X}" for c in s) for s in strings])
         for s, w in zip(strings, want):
-            self.assertEqual(ebcdicjp.encode(s, codepage).hex().upper(), w, repr(s))
+            self.assertEqual(kanjiframe.encode(s, codepage).hex().upper(), w, repr(s))
         got = oracle("dec", charset, want)
         for s, w, g in zip(strings, want, got):
-            text = ebcdicjp.decode(bytes.fromhex(w), codepage)
+            text = kanjiframe.decode(bytes.fromhex(w), codepage)
             self.assertEqual(" ".join(f"{ord(c):04X}" for c in text), g, repr(s))
 
     def test_ibm930_matches_jdk(self):

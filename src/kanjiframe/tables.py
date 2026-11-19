@@ -41,7 +41,7 @@ def load(name: str) -> Table:
         raise LookupError(f"unknown EBCDIC code page: {name!r} (have: ibm930, ibm939)")
     if key in _cache:
         return _cache[key]
-    raw = zlib.decompress(resources.files("ebcdicjp").joinpath(f"data/{key}.bin").read_bytes())
+    raw = zlib.decompress(resources.files("kanjiframe").joinpath(f"data/{key}.bin").read_bytes())
     sbcs = list(struct.unpack_from(">256H", raw, 0))
     pos = 512
     flat = struct.unpack_from(f">{191 * 191}H", raw, pos)

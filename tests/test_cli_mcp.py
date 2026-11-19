@@ -11,7 +11,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from ebcdicjp.cli import main  # noqa: E402
+from kanjiframe.cli import main  # noqa: E402
 
 CPY = os.path.join(HERE, "data", "custmast.cpy")
 
@@ -73,7 +73,7 @@ class McpTests(unittest.TestCase):
                 "path": out, "copybook": CPY}}},
         ]
         env = dict(os.environ, PYTHONPATH=os.path.join(ROOT, "src"))
-        p = subprocess.run([sys.executable, "-m", "ebcdicjp.mcp_server"], input="\n".join(json.dumps(m) for m in msgs),
+        p = subprocess.run([sys.executable, "-m", "kanjiframe.mcp_server"], input="\n".join(json.dumps(m) for m in msgs),
                            capture_output=True, text=True, encoding="utf-8", env=env, timeout=60)
         resp = [json.loads(ln) for ln in p.stdout.splitlines()]
         self.assertEqual(len(resp[1]["result"]["tools"]), 6)

@@ -1,7 +1,7 @@
-"""Zero-dependency MCP (Model Context Protocol) stdio server for ebcdicjp.
+"""Zero-dependency MCP (Model Context Protocol) stdio server for kanjiframe.
 
 Register with Claude Code:
-    claude mcp add ebcdicjp -- ebcdicjp-mcp
+    claude mcp add kanjiframe -- kanjiframe-mcp
 """
 from __future__ import annotations
 
@@ -149,7 +149,7 @@ def handle(msg: dict) -> dict | None:
             result = {
                 "protocolVersion": req if req in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0],
                 "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "ebcdicjp", "version": __version__},
+                "serverInfo": {"name": "kanjiframe", "version": __version__},
                 "instructions": ("Japanese mainframe data: start with describe_layout on the copybook, then read_records "
                                  "with a small limit. If kana or lowercase look wrong, try detect_codepage. Report the "
                                  "issues read_records returns instead of guessing what the bytes meant."),

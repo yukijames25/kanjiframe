@@ -1,4 +1,4 @@
-// Build tests/data/custmast_930.dat independently of ebcdicjp: text via the JDK's x-IBM930,
+// Build tests/data/custmast_930.dat independently of kanjiframe: text via the JDK's x-IBM930,
 // numbers via this file's own packing code. Used as "a file from the mainframe" in tests and trials.
 //
 //   java tools/MakeSample.java tests/data/custmast_930.dat

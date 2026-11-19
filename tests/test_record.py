@@ -7,8 +7,8 @@ from decimal import Decimal
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "src"))
 
-from ebcdicjp import copybook, numbers  # noqa: E402
-from ebcdicjp.record import RecordError, decode_record, encode_record, split_records  # noqa: E402
+from kanjiframe import copybook, numbers  # noqa: E402
+from kanjiframe.record import RecordError, decode_record, encode_record, split_records  # noqa: E402
 
 CPY = open(os.path.join(HERE, "data", "custmast.cpy"), encoding="utf-8").read()
 JAVA = shutil.which("java")

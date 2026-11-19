@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ebcdicjp"
+name = "kanjiframe"
 version = "0.1.0"
 description = "Read and write Japanese mainframe data (EBCDIC IBM930/939 kana and kanji, COBOL copybooks, packed decimals) with zero dependencies"
 readme = "README.md"
@@ -12,11 +12,11 @@ license = { text = "MIT" }
 dependencies = []
 
 [project.scripts]
-ebcdicjp = "ebcdicjp.cli:main"
-ebcdicjp-mcp = "ebcdicjp.mcp_server:main"
+kanjiframe = "kanjiframe.cli:main"
+kanjiframe-mcp = "kanjiframe.mcp_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-ebcdicjp = ["data/*.bin"]
+kanjiframe = ["data/*.bin"]

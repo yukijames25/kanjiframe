@@ -1,23 +1,23 @@
 ---
-name: ebcdicjp
+name: kanjiframe
 description: Read, check or create Japanese mainframe data — EBCDIC (IBM930/IBM939) files with kanji/kana, COBOL copybook layouts (.cpy), packed decimal (COMP-3), zoned or binary numbers. Use when the user has a fixed-length / RDW mainframe file, a copybook, hex bytes that look like 文字化け, or needs EBCDIC test data.
 ---
 
-# ebcdicjp — 日本語メインフレームデータの読み書き
+# kanjiframe — 日本語メインフレームデータの読み書き
 
-依存ゼロの Python ツール。このリポジトリ直下なら `PYTHONPATH=src`（PowerShell: `$env:PYTHONPATH="src"`）を付けて `python -m ebcdicjp ...`。インストール済みなら `ebcdicjp ...`。
+依存ゼロの Python ツール。このリポジトリ直下なら `PYTHONPATH=src`（PowerShell: `$env:PYTHONPATH="src"`）を付けて `python -m kanjiframe ...`。インストール済みなら `kanjiframe ...`。
 
 ## 手順
 
 1. **レイアウトを読む**
    ```
-   python -m ebcdicjp layout <copybook.cpy>
+   python -m kanjiframe layout <copybook.cpy>
    ```
    各項目の位置（1始まり）・長さ・種類を確認する。合計の長さがレコード長。
 
 2. **数件だけ読む**
    ```
-   python -m ebcdicjp view <data> -c <copybook.cpy> -n 5 --format md
+   python -m kanjiframe view <data> -c <copybook.cpy> -n 5 --format md
    ```
    - コードページ・RDW・コピーブックの文字コードは自動で判定され、`note:` に何を仮定したかが出る。**note は必ず読んでユーザーにも伝える**。違っていれば `--codepage ibm939` / `--no-rdw` / `--copybook-encoding` で上書きする。
    - `code page UNCERTAIN` のときは推測で決めず、`detect` の両方の preview（文字項目ごとの読み）をユーザーに見せて確認する。
@@ -25,13 +25,13 @@ description: Read, check or create Japanese mainframe data — EBCDIC (IBM930/IB
 
 3. **全件の問題を一覧する**
    ```
-   python -m ebcdicjp check <data> -c <copybook.cpy> --key <社員番号などの項目名>
+   python -m kanjiframe check <data> -c <copybook.cpy> --key <社員番号などの項目名>
    ```
    1行に1問題（レコード番号・キー・項目のパス・位置（1始まり）・バイト・種類）。最後の行が件数のまとめ（blank は問題とは別に数える。blank もユーザーに確認する）。終了コード 1 は「問題あり」で、コマンドの失敗ではない（失敗は 2）。`--format csv` で表にもできる。
 
 4. **1件を詳しく調べる**
    ```
-   python -m ebcdicjp dump <data> -c <copybook.cpy> --skip <レコード番号-1> -n 1
+   python -m kanjiframe dump <data> -c <copybook.cpy> --skip <レコード番号-1> -n 1
    ```
    項目ごとの位置・値・16進が並ぶ。問題の種類:
    | kind | 意味 |
@@ -53,7 +53,7 @@ description: Read, check or create Japanese mainframe data — EBCDIC (IBM930/IB
 
 6. **テストデータを作る**
    ```
-   python -m ebcdicjp encode records.jsonl -c <copybook.cpy> -o TEST.dat --codepage <ibm930|ibm939> [--rdw]
+   python -m kanjiframe encode records.jsonl -c <copybook.cpy> -o TEST.dat --codepage <ibm930|ibm939> [--rdw]
    ```
    コードページと RDW は、読み込む側のシステム（元データの note）に合わせる。
    JSON の形は `view` の出力と同じ（グループはオブジェクト、OCCURS は配列、金額は "123.45" の文字列）。省いた項目は空白／ゼロ、FILLER は書かなくてよい。OCCURS は使う分だけ並べれば残りは空白／ゼロになる。

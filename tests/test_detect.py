@@ -9,9 +9,9 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "src"))
 
-from ebcdicjp import decode_report  # noqa: E402
-from ebcdicjp.api import load_layout, read_copybook, read_records, rdw_records, write_records  # noqa: E402
-from ebcdicjp.cli import main  # noqa: E402
+from kanjiframe import decode_report  # noqa: E402
+from kanjiframe.api import load_layout, read_copybook, read_records, rdw_records, write_records  # noqa: E402
+from kanjiframe.cli import main  # noqa: E402
 
 # Shift_JIS, fixed format: sequence numbers in 1-6, identifiers from column 73
 COPYBOOK = (

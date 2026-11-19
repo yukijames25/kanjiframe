@@ -1,12 +1,12 @@
-"""ebcdicjp command line.
+"""kanjiframe command line.
 
-    ebcdicjp layout CUSTMAST.cpy                         # field positions / lengths
-    ebcdicjp view   CUST.dat -c CUSTMAST.cpy [--format jsonl|csv|md]
-    ebcdicjp check  CUST.dat -c CUSTMAST.cpy --key CUST-NO   # every problem in the file, one line each
-    ebcdicjp dump   CUST.dat -c CUSTMAST.cpy --skip 4 -n 1   # hex next to each value (for 文字化け hunting)
-    ebcdicjp encode records.jsonl -c CUSTMAST.cpy -o CUST.dat --codepage ibm930   # test data
-    ebcdicjp text   0E 45 65 45 63 0F                     # decode hex bytes;  --encode "山田" for the reverse
-    ebcdicjp detect CUST.dat [-c CUSTMAST.cpy]            # IBM930 or IBM939?
+    kanjiframe layout CUSTMAST.cpy                         # field positions / lengths
+    kanjiframe view   CUST.dat -c CUSTMAST.cpy [--format jsonl|csv|md]
+    kanjiframe check  CUST.dat -c CUSTMAST.cpy --key CUST-NO   # every problem in the file, one line each
+    kanjiframe dump   CUST.dat -c CUSTMAST.cpy --skip 4 -n 1   # hex next to each value (for 文字化け hunting)
+    kanjiframe encode records.jsonl -c CUSTMAST.cpy -o CUST.dat --codepage ibm930   # test data
+    kanjiframe text   0E 45 65 45 63 0F                     # decode hex bytes;  --encode "山田" for the reverse
+    kanjiframe detect CUST.dat [-c CUSTMAST.cpy]            # IBM930 or IBM939?
 
 Code page, RDW and the copybook's encoding are detected unless given; what was assumed is
 printed as "note:" lines. Byte positions are 1-based everywhere, like the layout.
@@ -137,9 +137,9 @@ def main(argv: list[str] | None = None) -> int:
     for s in (sys.stdout, sys.stderr):
         if hasattr(s, "reconfigure"):
             s.reconfigure(encoding="utf-8")
-    ap = argparse.ArgumentParser(prog="ebcdicjp", description="日本語EBCDIC（IBM930/939）のメインフレームデータを読み書きする",
+    ap = argparse.ArgumentParser(prog="kanjiframe", description="日本語EBCDIC（IBM930/939）のメインフレームデータを読み書きする",
                                  epilog=__doc__.split("\n\n", 1)[1], formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--version", action="version", version=f"ebcdicjp {__version__}")
+    ap.add_argument("--version", action="version", version=f"kanjiframe {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def copybook_opts(p, required=True):
